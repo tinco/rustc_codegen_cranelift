@@ -74,7 +74,12 @@ fn create_jit_module(
     jit_builder.symbol("__clif_jit_fn", clif_jit_fn as *const u8);
     let mut jit_module = UnwindModule::new(JITModule::new(jit_builder), false);
 
-    let cx = crate::CodegenCx::new(tcx, jit_module.isa(), false, Symbol::intern("dummy_cgu_name"));
+    let mut cx = crate::CodegenCx::new(
+        tcx,
+        jit_module.isa().frontend_config(),
+        false,
+        Symbol::intern("dummy_cgu_name"),
+    );
 
     crate::allocator::codegen(tcx, &mut jit_module);
 
@@ -278,7 +283,7 @@ fn jit_fn(instance_ptr: *const Instance<'static>, trampoline_ptr: *const u8) -> 
 
             let mut cx = crate::CodegenCx::new(
                 tcx,
-                jit_module.isa(),
+                jit_module.isa().frontend_config(),
                 false,
                 Symbol::intern("dummy_cgu_name"),
             );

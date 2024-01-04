@@ -37,7 +37,7 @@ use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 
-use cranelift_codegen::isa::TargetIsa;
+use cranelift_codegen::isa::{TargetFrontendConfig, TargetIsa};
 use cranelift_codegen::settings::{self, Configurable};
 use rustc_codegen_ssa::traits::CodegenBackend;
 use rustc_codegen_ssa::CodegenResults;
@@ -135,11 +135,16 @@ struct CodegenCx {
 }
 
 impl CodegenCx {
-    fn new(tcx: TyCtxt<'_>, isa: &dyn TargetIsa, debug_info: bool, cgu_name: Symbol) -> Self {
-        assert_eq!(pointer_ty(tcx), isa.pointer_type());
+    fn new(
+        tcx: TyCtxt<'_>,
+        frontend_config: TargetFrontendConfig,
+        debug_info: bool,
+        cgu_name: Symbol,
+    ) -> Self {
+        assert_eq!(pointer_ty(tcx), frontend_config.pointer_type());
 
         let debug_context = if debug_info && !tcx.sess.target.options.is_like_windows {
-            Some(DebugContext::new(tcx, isa, cgu_name.as_str()))
+            Some(DebugContext::new(tcx, frontend_config, cgu_name.as_str()))
         } else {
             None
         };
@@ -213,7 +218,13 @@ impl CodegenBackend for CraneliftCodegenBackend {
         tcx.dcx().abort_if_errors();
         let config = self.config.borrow().clone().unwrap();
         match config.codegen_mode {
-            CodegenMode::Aot => driver::aot::run_aot(tcx, config, metadata, need_metadata_module),
+            CodegenMode::Aot => {
+                if tcx.sess.target.arch == "wasm32" {
+                    driver::wasm::compile_wasm(tcx, config, metadata, need_metadata_module)
+                } else {
+                    driver::aot::run_aot(tcx, config, metadata, need_metadata_module)
+                }
+            }
             CodegenMode::Jit | CodegenMode::JitLazy => {
                 #[cfg(feature = "jit")]
                 driver::jit::run_jit(tcx, config);
@@ -230,11 +241,17 @@ impl CodegenBackend for CraneliftCodegenBackend {
         sess: &Session,
         outputs: &OutputFilenames,
     ) -> (CodegenResults, FxIndexMap<WorkProductId, WorkProduct>) {
-        ongoing_codegen.downcast::<driver::aot::OngoingCodegen>().unwrap().join(
-            sess,
-            outputs,
-            self.config.borrow().as_ref().unwrap(),
-        )
+        match ongoing_codegen.downcast::<driver::aot::OngoingCodegen>() {
+            Ok(ongoing_codegen) => {
+                ongoing_codegen.join(sess, outputs, self.config.borrow().as_ref().unwrap())
+            }
+            Err(ongoing_codegen) => {
+                match ongoing_codegen.downcast::<driver::wasm::OngoingCodegen>() {
+                    Ok(ongoing_codegen) => ongoing_codegen.join(sess),
+                    Err(ongoing_codegen) => unreachable!(),
+                }
+            }
+        }
     }
 
     fn link(
@@ -244,6 +261,15 @@ impl CodegenBackend for CraneliftCodegenBackend {
         outputs: &OutputFilenames,
     ) -> Result<(), ErrorGuaranteed> {
         use rustc_codegen_ssa::back::link::link_binary;
+
+        if sess.target.arch == "wasm32" {
+            std::fs::copy(
+                codegen_results.modules[0].object.as_ref().unwrap(),
+                outputs.single_output_file.as_ref().unwrap().as_path(),
+            )
+            .unwrap();
+            return Ok(());
+        }
 
         link_binary(sess, &crate::archive::ArArchiveBuilderBuilder, &codegen_results, outputs)
     }

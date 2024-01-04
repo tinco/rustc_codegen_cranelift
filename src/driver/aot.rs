@@ -496,7 +496,7 @@ fn module_codegen(
 
             let mut cx = crate::CodegenCx::new(
                 tcx,
-                module.isa(),
+                module.isa().frontend_config(),
                 tcx.sess.opts.debuginfo != DebugInfo::None,
                 cgu_name,
             );

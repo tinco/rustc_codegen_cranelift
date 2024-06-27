@@ -66,9 +66,14 @@ fn create_jit_module(tcx: TyCtxt<'_>, hotswap: bool) -> (UnwindModule<JITModule>
     let mut jit_builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
     jit_builder.hotswap(hotswap);
     crate::compiler_builtins::register_functions_for_jit(&mut jit_builder);
-    jit_builder.symbol_lookup_fn(dep_symbol_lookup_fn(tcx.sess, crate_info));
+    //jit_builder.symbol_lookup_fn(dep_symbol_lookup_fn(tcx.sess, crate_info));
     jit_builder.symbol("__clif_jit_fn", clif_jit_fn as *const u8);
     let mut jit_module = UnwindModule::new(JITModule::new(jit_builder), false);
+
+    #[cfg(feature = "lto")]
+    for (_name, module) in super::lto::load_lto_modules(tcx, &crate_info) {
+        module.apply_to(&mut jit_module);
+    }
 
     let cx = crate::CodegenCx::new(tcx, jit_module.isa(), false, sym::dummy_cgu_name);
 

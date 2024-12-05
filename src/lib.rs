@@ -207,15 +207,8 @@ impl CodegenBackend for CraneliftCodegenBackend {
                 .unwrap_or_else(|err| tcx.sess.dcx().fatal(err))
         });
         match config.codegen_mode {
-            CodegenMode::Aot => match tcx.sess.lto() {
-                Lto::No | Lto::ThinLocal => {
-                    driver::aot::run_aot(tcx, metadata, need_metadata_module)
-                }
-                Lto::Thin | Lto::Fat => {
-                    if tcx.crate_name(LOCAL_CRATE) == sym::compiler_builtins {
-                        return driver::aot::run_aot(tcx, metadata, need_metadata_module);
-                    }
-
+            CodegenMode::Aot => {
+                if tcx.sess.opts.cg.linker_plugin_lto.enabled() {
                     #[cfg(feature = "lto")]
                     return driver::lto::run_aot(tcx, metadata, need_metadata_module);
 
@@ -223,7 +216,21 @@ impl CodegenBackend for CraneliftCodegenBackend {
                     tcx.dcx()
                         .fatal("LTO support was disabled when compiling rustc_codegen_cranelift");
                 }
-            },
+                match tcx.sess.lto() {
+                    Lto::No | Lto::ThinLocal => {
+                        driver::aot::run_aot(tcx, metadata, need_metadata_module)
+                    }
+                    Lto::Thin | Lto::Fat => {
+                        #[cfg(feature = "lto")]
+                        return driver::lto::run_aot(tcx, metadata, need_metadata_module);
+
+                        #[cfg(not(feature = "lto"))]
+                        tcx.dcx().fatal(
+                            "LTO support was disabled when compiling rustc_codegen_cranelift",
+                        );
+                    }
+                }
+            }
             CodegenMode::Jit | CodegenMode::JitLazy => {
                 #[cfg(feature = "jit")]
                 driver::jit::run_jit(tcx, config.codegen_mode, config.jit_args);

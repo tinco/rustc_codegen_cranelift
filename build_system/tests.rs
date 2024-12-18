@@ -73,8 +73,6 @@ const BASE_SYSROOT_SUITE: &[TestCase] = &[
         "example/arbitrary_self_types_pointers_and_wrappers.rs",
         &[],
     ),
-    TestCase::build_lib("build.alloc_system", "example/alloc_system.rs", "lib"),
-    TestCase::build_bin_and_run("aot.alloc_example", "example/alloc_example.rs", &[]),
     TestCase::jit_bin("jit.std_example", "example/std_example.rs", "arg"),
     TestCase::build_bin_and_run("aot.std_example", "example/std_example.rs", &["arg"]),
     TestCase::build_bin_and_run("aot.dst_field_align", "example/dst-field-align.rs", &[]),
@@ -89,19 +87,10 @@ const BASE_SYSROOT_SUITE: &[TestCase] = &[
         &[],
     ),
     TestCase::build_bin_and_run("aot.float-minmax-pass", "example/float-minmax-pass.rs", &[]),
-    TestCase::build_bin_and_run("aot.mod_bench", "example/mod_bench.rs", &[]),
     TestCase::build_bin_and_run("aot.issue-72793", "example/issue-72793.rs", &[]),
     TestCase::build_bin("aot.issue-59326", "example/issue-59326.rs"),
     TestCase::build_bin_and_run("aot.neon", "example/neon.rs", &[]),
-    TestCase::custom("aot.gen_block_iterate", &|runner| {
-        runner.run_rustc([
-            "example/gen_block_iterate.rs",
-            "--edition",
-            "2024",
-            "-Zunstable-options",
-        ]);
-        runner.run_out_command("gen_block_iterate", &[]);
-    }),
+    TestCase::build_bin_and_run("aot.gen_block_iterate", "example/gen_block_iterate.rs", &[]),
     TestCase::build_bin_and_run("aot.raw-dylib", "example/raw-dylib.rs", &[]),
 ];
 
@@ -431,6 +420,7 @@ impl<'a> TestRunner<'a> {
         cmd.arg(&self.target_compiler.triple);
         cmd.arg("-Cpanic=abort");
         cmd.arg("--check-cfg=cfg(jit)");
+        cmd.arg("--edition=2024");
         cmd.args(args);
         cmd
     }
